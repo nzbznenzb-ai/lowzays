@@ -11,7 +11,7 @@ export const SURFACE_LABELS: Record<Surface, string> = {
   INDOOR: "Indoor",
 };
 
-export const VERDICTS = ["pari", "hors_perimetre", "abstention"] as const;
+export const VERDICTS = ["pari", "abstention"] as const;
 export type Verdict = (typeof VERDICTS)[number];
 
 export const ALARM_STATUSES = ["active", "veille"] as const;

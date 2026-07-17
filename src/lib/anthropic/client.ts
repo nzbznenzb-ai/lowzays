@@ -15,4 +15,6 @@ export function anthropicClient() {
   return client;
 }
 
-export const SENTINELLE_MODEL = "claude-sonnet-4-6";
+export const SENTINELLE_MODEL = "claude-fable-5";
+export const SENTINELLE_FALLBACK_MODEL = "claude-opus-4-8";
+export const FALLBACK_BETA = "server-side-fallback-2026-06-01";

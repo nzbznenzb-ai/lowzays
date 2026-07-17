@@ -1,10 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
-import { anthropicClient, SENTINELLE_MODEL } from "@/lib/anthropic/client";
+import { anthropicClient, FALLBACK_BETA, SENTINELLE_FALLBACK_MODEL, SENTINELLE_MODEL } from "@/lib/anthropic/client";
 import { AUTOPSY_RULES } from "@/lib/anthropic/rules";
 import { supabaseAdmin } from "@/lib/supabase/server";
 import { getActiveAlarms, getLessons } from "@/lib/memory";
 import type { Circuit, Match, Surface } from "@/lib/types";
 import type Anthropic from "@anthropic-ai/sdk";
+
+export const maxDuration = 60;
 
 const AUTOPSY_TOOL: Anthropic.Tool = {
   name: "publier_autopsie",
@@ -69,6 +71,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   const body = await req.json();
   const gagnant = String(body.gagnant ?? "").trim();
   const score_exact = String(body.score_exact ?? "").trim();
+  const contexte_resultat = String(body.contexte_resultat ?? "").trim();
 
   if (!gagnant || !score_exact) {
     return NextResponse.json({ error: "Gagnant et score exact requis." }, { status: 400 });
@@ -129,7 +132,7 @@ Facteur dominant: ${match.facteur_dominant ?? "aucun"}
 === RÉSULTAT RÉEL ===
 Gagnant: ${gagnant}
 Score exact: ${score_exact}
-
+${contexte_resultat ? `\nObservations/stats du match réellement joué, fournies par l'utilisateur (utilise-les pour une autopsie plus précise et mieux étayée) :\n${contexte_resultat}\n` : ""}
 === ALARMES QUI AVAIENT SONNÉ SUR CE MATCH ===
 ${alarmesSonneesText}
 
@@ -143,9 +146,12 @@ ${lessonsListText}`;
 
   let response;
   try {
-    response = await client.messages.create({
+    response = await client.beta.messages.create({
       model: SENTINELLE_MODEL,
-      max_tokens: 2048,
+      max_tokens: 8000,
+      betas: [FALLBACK_BETA],
+      fallbacks: [{ model: SENTINELLE_FALLBACK_MODEL }],
+      output_config: { effort: "high" },
       system: [{ type: "text", text: AUTOPSY_RULES }],
       messages: [{ role: "user", content: userText }],
       tools: [AUTOPSY_TOOL],
@@ -154,6 +160,13 @@ ${lessonsListText}`;
   } catch (err) {
     const message = err instanceof Error ? err.message : "Erreur inconnue lors de l'appel à Claude.";
     return NextResponse.json({ error: `Anthropic : ${message}` }, { status: 502 });
+  }
+
+  if (response.stop_reason === "refusal") {
+    return NextResponse.json(
+      { error: "Claude a refusé de traiter cette demande (classificateur de sécurité)." },
+      { status: 502 }
+    );
   }
 
   const toolUse = response.content.find((b) => b.type === "tool_use");

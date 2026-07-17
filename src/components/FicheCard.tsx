@@ -18,16 +18,12 @@ export default function FicheCard({ match: initialMatch }: { match: Match }) {
   const [open, setOpen] = useState(false);
   const [gagnant, setGagnant] = useState<string>("");
   const [scoreExact, setScoreExact] = useState("");
+  const [contexteResultat, setContexteResultat] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [autopsy, setAutopsy] = useState<Autopsy | null>(null);
 
-  const verdictLabel =
-    match.verdict === "hors_perimetre"
-      ? "Hors périmètre"
-      : match.verdict === "abstention"
-        ? "Abstention"
-        : "Pari";
+  const verdictLabel = match.verdict === "abstention" ? "Abstention" : "Pari";
 
   async function handleResultSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -38,7 +34,11 @@ export default function FicheCard({ match: initialMatch }: { match: Match }) {
       const res = await fetch(`/api/matches/${match.id}/resultat`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ gagnant, score_exact: scoreExact.trim() }),
+        body: JSON.stringify({
+          gagnant,
+          score_exact: scoreExact.trim(),
+          contexte_resultat: contexteResultat.trim(),
+        }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Erreur inconnue.");
@@ -217,6 +217,13 @@ export default function FicheCard({ match: initialMatch }: { match: Match }) {
             value={scoreExact}
             onChange={(e) => setScoreExact(e.target.value)}
             placeholder="Score exact, ex. 6-4 7-5"
+            className={inputClass}
+          />
+          <textarea
+            value={contexteResultat}
+            onChange={(e) => setContexteResultat(e.target.value)}
+            placeholder="Optionnel — colle des stats/observations du match réellement joué (déroulé, blessure survenue, stats de service/retour…) pour une autopsie plus précise"
+            rows={4}
             className={inputClass}
           />
           <button

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { anthropicClient, SENTINELLE_MODEL } from "@/lib/anthropic/client";
+import { anthropicClient, FALLBACK_BETA, SENTINELLE_FALLBACK_MODEL, SENTINELLE_MODEL } from "@/lib/anthropic/client";
 import { SENTINELLE_RULES } from "@/lib/anthropic/rules";
 import { supabaseAdmin } from "@/lib/supabase/server";
 import {
@@ -12,13 +12,15 @@ import {
 import { CIRCUITS, SURFACES, type AlarmeSonnee, type Circuit, type Surface } from "@/lib/types";
 import type Anthropic from "@anthropic-ai/sdk";
 
+export const maxDuration = 60;
+
 const FICHE_TOOL: Anthropic.Tool = {
   name: "publier_fiche",
   description: "Publie la fiche d'analyse complète du match selon les règles SENTINELLE.",
   input_schema: {
     type: "object",
     properties: {
-      verdict: { type: "string", enum: ["pari", "hors_perimetre", "abstention"] },
+      verdict: { type: "string", enum: ["pari", "abstention"] },
       joueur_pronostic: { type: ["string", "null"] },
       proba: { type: ["number", "null"], description: "Probabilité en pourcentage, 0-100" },
       note: { type: ["integer", "null"], description: "Note sur 10" },
@@ -77,7 +79,7 @@ const FICHE_TOOL: Anthropic.Tool = {
 };
 
 type FicheInput = {
-  verdict: "pari" | "hors_perimetre" | "abstention";
+  verdict: "pari" | "abstention";
   joueur_pronostic: string | null;
   proba: number | null;
   note: number | null;
@@ -147,9 +149,12 @@ ${stats_brutes}`;
 
   let response;
   try {
-    response = await client.messages.create({
+    response = await client.beta.messages.create({
       model: SENTINELLE_MODEL,
-      max_tokens: 4096,
+      max_tokens: 8000,
+      betas: [FALLBACK_BETA],
+      fallbacks: [{ model: SENTINELLE_FALLBACK_MODEL }],
+      output_config: { effort: "high" },
       system: [
         {
           type: "text",
@@ -166,8 +171,15 @@ ${stats_brutes}`;
     return NextResponse.json({ error: `Anthropic : ${message}` }, { status: 502 });
   }
 
+  if (response.stop_reason === "refusal") {
+    return NextResponse.json(
+      { error: "Claude a refusé de traiter cette demande (classificateur de sécurité)." },
+      { status: 502 }
+    );
+  }
+
   console.log(
-    `[analyse] cache_read=${response.usage.cache_read_input_tokens ?? 0} cache_write=${response.usage.cache_creation_input_tokens ?? 0} input=${response.usage.input_tokens} output=${response.usage.output_tokens}`
+    `[analyse] modele=${response.model} cache_read=${response.usage.cache_read_input_tokens ?? 0} cache_write=${response.usage.cache_creation_input_tokens ?? 0} input=${response.usage.input_tokens} output=${response.usage.output_tokens}`
   );
 
   const toolUse = response.content.find((b) => b.type === "tool_use");
